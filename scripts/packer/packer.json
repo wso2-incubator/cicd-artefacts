@@ -1,0 +1,63 @@
+{
+  "variables": {
+    "aws_access_key": "",
+    "aws_secret_key": "",
+    "product": "",
+    "version": "",
+    "name": "BASE",
+    "product": null,
+    "base_ami": "ami-0460db8b0cf337ad8",
+    "region": "us-east-1",
+    "buildtime": "{{ isotime \"2006-01-02-1504\" }}"
+  },
+  "builders": [
+    {
+      "type": "amazon-ebs",
+      "access_key": "{{user `aws_access_key`}}",
+      "secret_key": "{{user `aws_secret_key`}}",
+      "source_ami": "{{user `base_ami`}}",
+      "instance_type": "t2.medium",
+      "ssh_username": "ubuntu",
+      "ami_name": "WSO2-PuppetMaster-UBUNTU-18.04-Demo-11-2-1703-{{timestamp}}",
+      "ami_groups": "all",
+      "ami_description": "WSO2-PUPPETMASTER AMI",
+      "tags": {
+      },
+      "ami_block_device_mappings": [
+        {
+          "device_name": "/dev/xvdf",
+          "volume_size": 10,
+          "delete_on_termination": true
+        }
+      ],
+      "launch_block_device_mappings": [
+        {
+          "device_name": "/dev/xvdf",
+          "volume_size": 10,
+          "delete_on_termination": true
+        }
+      ]
+    }
+  ],
+  "provisioners": [
+    {
+      "type": "file",
+      "source": "{{user `image_resources`}}",
+      "destination": "/tmp"
+    },
+    {
+      "type": "shell",
+      "execute_command": "sudo su - -c '{{ .Vars }} {{ .Path }}'",
+      "inline" : [
+      "bash /tmp/config.sh \"{{ user `product` }}\""
+      ]
+    }
+  ],
+   "post-processors": [
+   {
+     "type": "manifest",
+     "output": "{{user `manifest`}}",
+     "strip_path": true
+   }
+ ]
+}

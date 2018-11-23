@@ -1,0 +1,272 @@
+# Copyright (c) 2018, WSO2 Inc. (http://www.wso2.org) All Rights Reserved.
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+AWSTemplateFormatVersion: 2010-09-09
+Description: >-
+  EU CON Jenkins Deployment
+Metadata:
+  'AWS::CloudFormation::Interface':
+    ParameterGroups:
+      - Label:
+          default: Cluster Configuration
+        Parameters:
+          - AWSAccessKeyId
+          - AWSAccessKeySecret
+          - KeyPairName
+          - WSO2InstanceType
+      - Label:
+          default: Network Configuration
+        Parameters:
+          - CertificateName
+      - Label:
+          default: Database Configuration
+        Parameters:
+          - DBUsername
+          - DBPassword
+      - Label:
+          default: WSO2 Credentials
+        Parameters:
+          - WUMUsername
+          - WUMPassword
+      - Label:
+          default: Other Parameters
+        Parameters:
+          - ProductName
+          - ProductVersion
+          - GITREPOARTIFACTS
+          - GITREPOCF
+          - GITREPOPUPPET
+          - JDKVersion
+    ParameterLabels:
+      AWSAccessKeyId:
+        default: AWS Access Key ID
+      AWSAccessKeySecret:
+        default: AWS Access Secret Key
+      CertificateName:
+        default: SSL Certificate Name
+      KeyPairName:
+        default: Key Pair Name
+      WUMUsername:
+        default: Username
+      WUMPassword:
+        default: Password
+      WSO2InstanceType:
+        default: Instance Type
+      DBUsername:
+        default: Username
+      DBPassword:
+        default: Password
+      GITREPOARTIFACTS:
+        default: Artifacts Repository (git)
+      GITREPOCF:
+        default: CloudFormation Scripts (git)
+      GITREPOPUPPET:
+        default: Configuration Repository (git)
+      ProductName:
+        default: Product Name
+      ProductVersion:
+        default: Product Version
+      JDKVersion:
+        default: JDK Version
+Parameters:
+  AWSAccessKeyId:
+    Type: String
+  AWSAccessKeySecret:
+    Type: String
+  KeyPairName:
+    Description: >-
+      The private key used to log in to instances through SSH
+    Type: 'AWS::EC2::KeyPair::KeyName'
+  CertificateName:
+    Description: A valid SSL certificate used for HTTPS
+    Type: String
+    # MinLength: 1
+  WSO2InstanceType:
+    Type: String
+    Default: t2.medium
+    AllowedValues:
+      - t2.medium
+      - t2.large
+      - t2.xlarge
+      - t2.2xlarge
+      - m3.medium
+      - m3.large
+      - m3.xlarge
+      - m3.2xlarge
+      - m4.large
+    ConstraintDescription: Must be a valid EC2 instance type
+  ProductName:
+    Type: String
+    AllowedValues:
+      - wso2ei
+  ProductVersion:
+    Type: String
+    AllowedValues:
+      - 6.4.0
+      - 6.3.0
+  WUMPassword:
+    Type: String
+    Default: ""
+    NoEcho: true
+  WUMUsername:
+    Type: String
+    Default: ""
+  DBUsername:
+    Type: String
+    # MinLength: 4
+    # AllowedPattern: '[A-Za-z0-9\-]+'
+  DBPassword:
+    Type: String
+    # MinLength: 8
+    NoEcho: true
+  JDKVersion:
+    Type: String
+    Default: ORACLE_JDK_8
+    AllowedValues:
+      - OPEN_JDK_8
+      - ORACLE_JDK_8
+  GITREPOARTIFACTS:
+    Type: String
+  GITREPOCF:
+    Type: String
+  GITREPOPUPPET:
+    Type: String
+Resources:
+  # networking configurations
+  WSO2EIPublicInternetGateway:
+    Type: 'AWS::EC2::InternetGateway'
+
+  WSO2EIPublicRouteTable:
+    Type: 'AWS::EC2::RouteTable'
+    Properties:
+      VpcId: !Ref TESTVPC
+
+  WSO2EIPublicSubnet1RouteTableAssociation:
+    Type: 'AWS::EC2::SubnetRouteTableAssociation'
+    Properties:
+      RouteTableId: !Ref WSO2EIPublicRouteTable
+      SubnetId: !Ref TestSubnet1
+
+  WSO2EIPublicRoute:
+    Type: 'AWS::EC2::Route'
+    Properties:
+      RouteTableId: !Ref WSO2EIPublicRouteTable
+      GatewayId: !Ref WSO2EIPublicInternetGateway
+      DestinationCidrBlock: 0.0.0.0/0
+    DependsOn: WSO2EIVPCInternetGatewayAttachment
+
+  WSO2EIVPCInternetGatewayAttachment:
+    Type: 'AWS::EC2::VPCGatewayAttachment'
+    Properties:
+      InternetGatewayId: !Ref WSO2EIPublicInternetGateway
+      VpcId: !Ref TESTVPC
+
+  WSO2jenkinsEIPAssociation:
+    Type: 'AWS::EC2::EIPAssociation'
+    Properties:
+      AllocationId: !GetAtt WSO2JenkinsEIP.AllocationId
+      InstanceId: !Ref WSO2JenkinsInstance
+  WSO2JenkinsEIP:
+    Type: 'AWS::EC2::EIP'
+    Properties:
+      Domain: vpc
+  WSO2JenkinsInstance:
+    Type: 'AWS::EC2::Instance'
+    Properties:
+      DisableApiTermination: 'false'
+      InstanceInitiatedShutdownBehavior: stop
+      ImageId: !FindInMap
+        - WSO2UbuntuAMIRegionMap
+        - !Ref 'AWS::Region'
+        - Ubuntu180464bit
+      InstanceType: t2.medium
+      KeyName: !Ref KeyPairName
+      Monitoring: 'false'
+      Tags:
+        - Key: Name
+          Value: WSO2JenkinsInstance
+      NetworkInterfaces:
+        - DeleteOnTermination: 'true'
+          Description: Primary network interface
+          DeviceIndex: 0
+          SubnetId: !Ref TestSubnet1
+          GroupSet:
+            - !Ref JenkinsSecurityGroup
+      UserData: !Base64
+        'Fn::Sub': |
+          #cloud-boothook
+          #!/bin/bash
+          export PATH=~/.local/bin:$PATH
+          sed -i "s|VAL1|${GITREPOARTIFACTS}|g" /home/jenkins/jenkins_env
+          sed -i "s|VAL2|${GITREPOCF}|g" /home/jenkins/jenkins_env
+          sed -i "s|VAL3|${GITREPOPUPPET}|g" /home/jenkins/jenkins_env
+          sed -i "s/VAL4/${KeyPairName}/g" /home/jenkins/jenkins_env
+          sed -i "s/VAL5/${WSO2InstanceType}/g" /home/jenkins/jenkins_env
+          sed -i "s/VAL6/${CertificateName}/g" /home/jenkins/jenkins_env
+          sed -i "s/VAL7/${DBUsername}/g" /home/jenkins/jenkins_env
+          sed -i "s/VAL8/${DBPassword}/g" /home/jenkins/jenkins_env
+          sed -i "s/VAL9/${JDKVersion}/g" /home/jenkins/jenkins_env
+          sed -i "s/VALX/${ProductName}/g" /home/jenkins/jenkins_env
+          sed -i "s/VALY/${ProductVersion}/g" /home/jenkins/jenkins_env
+
+          sed -i "s/VAL1/${AWSAccessKeyId}/g" /home/ubuntu/.aws/credentials
+          sed -i "s|VAL2|${AWSAccessKeySecret}|g" /home/ubuntu/.aws/credentials
+          sed -i "s/VAL1/${AWS::Region}/g" /home/ubuntu/.aws/config
+
+          export publichostname=$(ec2metadata --public-hostname)
+          sed -i "s/VAL/$publichostname/g" /var/lib/jenkins/jenkins.model.JenkinsLocationConfiguration.xml
+          service jenkins start
+
+          sleep 60 # wait for 1 of the second before check again
+          export JENKINS_CRUMB=$(curl -s 'http://admin:admin@localhost:8080/crumbIssuer/api/xml?xpath=concat(//crumbRequestField,":",//crumb)')
+          echo $JENKINS_CRUMB >> /home/ubuntu/log.txt
+          curl -s -XPOST -H $JENKINS_CRUMB http://admin:admin@localhost:8080/credentials/store/system/domain/_/createCredentials --data-urlencode 'json={ "": "0", "credentials": { "scope": "GLOBAL", "id": "wum_creds", "username": "${WUMUsername}", "password": "${WUMPassword}", "description": "WUM Credentials", "$class": "com.cloudbees.plugins.credentials.impl.UsernamePasswordCredentialsImpl" } }' -v >> /home/ubuntu/text.txt
+          curl -s -XPOST -H $JENKINS_CRUMB http://admin:admin@localhost:8080/credentials/store/system/domain/_/createCredentials --data-urlencode 'json={ "": "0", "credentials": { "scope": "GLOBAL", "id": "aws_creds", "accessKey": "${AWSAccessKeyId}", "secretKey": "${AWSAccessKeySecret}", "description": "AWS Credentials", "$class": "com.cloudbees.jenkins.plugins.awscredentials.AWSCredentialsImpl" } }' -v >> /home/ubuntu/text.txt
+
+  JenkinsSecurityGroup:
+    Type: 'AWS::EC2::SecurityGroup'
+    Properties:
+      VpcId: !Ref TESTVPC
+      GroupDescription: WSO2 Jenkins node Security Group
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 22
+          ToPort: 22
+          CidrIp: 0.0.0.0/0
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          CidrIp: 0.0.0.0/0
+  TESTVPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+  TestSubnet1:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref TESTVPC
+      CidrBlock: 10.0.254.0/24
+      AvailabilityZone: !Select
+        - '0'
+        - !GetAZs ''
+Outputs:
+  JenkinsManagementConsoleURL:
+    Value: !Sub '${WSO2JenkinsInstance.PublicDnsName}:8080/'
+    Description: Jenkins Management Console URL
+Mappings:
+  WSO2UbuntuAMIRegionMap:
+    us-east-1:
+      Ubuntu180464bit: ami-04e245635a03bf935
