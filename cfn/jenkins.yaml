@@ -274,4 +274,4 @@ Outputs:
 Mappings:
   WSO2UbuntuAMIRegionMap:
     us-east-1:
-      Ubuntu180464bit: ami-04e245635a03bf935
+      Ubuntu180464bit: ami-028c295f0ebdb76da
