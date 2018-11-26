@@ -14,7 +14,7 @@
 
 AWSTemplateFormatVersion: 2010-09-09
 Description: >-
-  EU CON Jenkins Deployment
+  WSO2 CICD Pipe line
 Metadata:
   'AWS::CloudFormation::Interface':
     ParameterGroups:
@@ -48,6 +48,7 @@ Metadata:
           - GITREPOCF
           - GITREPOPUPPET
           - JDKVersion
+          - Email
     ParameterLabels:
       AWSAccessKeyId:
         default: AWS Access Key ID
@@ -79,6 +80,8 @@ Metadata:
         default: Product Version
       JDKVersion:
         default: JDK Version
+      Email:
+        default: Email
 Parameters:
   AWSAccessKeyId:
     Type: String
@@ -141,6 +144,8 @@ Parameters:
   GITREPOCF:
     Type: String
   GITREPOPUPPET:
+    Type: String
+  Email:
     Type: String
 Resources:
   # networking configurations
@@ -219,7 +224,7 @@ Resources:
           sed -i "s/VAL9/${JDKVersion}/g" /home/jenkins/jenkins_env
           sed -i "s/VALX/${ProductName}/g" /home/jenkins/jenkins_env
           sed -i "s/VALY/${ProductVersion}/g" /home/jenkins/jenkins_env
-
+          sed -i "s/VALZ/${Email}/g" /home/jenkins/jenkins_env
           sed -i "s/VAL1/${AWSAccessKeyId}/g" /home/ubuntu/.aws/credentials
           sed -i "s|VAL2|${AWSAccessKeySecret}|g" /home/ubuntu/.aws/credentials
           sed -i "s/VAL1/${AWS::Region}/g" /home/ubuntu/.aws/config
@@ -269,4 +274,4 @@ Outputs:
 Mappings:
   WSO2UbuntuAMIRegionMap:
     us-east-1:
-      Ubuntu180464bit: ami-04e245635a03bf935
+      Ubuntu180464bit: ami-028c295f0ebdb76da
